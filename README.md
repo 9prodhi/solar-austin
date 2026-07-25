@@ -1,75 +1,60 @@
 # Solar Austin Grant Search
 
-An agent skill for finding and verifying institutional grant opportunities for
-[Solar Austin](https://solaraustin.org/) and other Austin- or Texas-based
-clean-energy nonprofits.
-
-The core rule is simple:
+**A Claude Code agent skill that turns grant-database leads into verified, source-linked funder dossiers** for [Solar Austin](https://solaraustin.org/) and other Austin/Texas clean-energy nonprofits.
 
 > Grant databases produce leads. A lead becomes a recommendation only after the
 > funder's own website has been checked in the current research session.
 
-The skill turns prospecting data into a decision-ready, source-linked funder
-dossier. It checks eligibility, deadlines, application paths, grant sizes,
-contacts, and disqualifiers before recommending that anyone act.
+## Why this exists
 
-## What the skill does
+Grant intelligence rots quietly. In the research run that produced this skill, the grant graph:
 
-- Confirms the organization's nonprofit or fiscal-sponsor status and assigns an
-  owner for outreach before suggesting applications.
-- Finds prospects through the
-  [open-grant-data MCP server](https://qwntl-labs-open-grant-data-mcp.hf.space/mcp).
-- Treats database results as `UNVERIFIED` until each recommended funder is
-  checked against its official website.
-- Separates active and past funders, warm network prospects, new prospects, and
-  ineligible organizations.
-- Produces a compact dossier with an ask amount, timing, application path,
-  sourced contact, and sequenced next actions.
-- Re-verifies volatile facts such as deadlines and open cycles before an
-  application is prepared.
+- **missed a renewal** — it knew about a $75,000 (2023) grant to Solar Austin but not the **$100,000 (2025)** follow-on sitting in the funder's own public grants database;
+- **misjudged eligibility** — its top "strong confidence" lead turned out to be **geographically ineligible** (a North-Texas-only community foundation whose Austin grants were donor-advised pass-throughs);
+- **missed the clock** — one funder's application window closed *the day before* the research ran, while its rolling small-grants fund was open and nobody would have known.
 
-## Why verification matters
+An unverified lead list transfers the checking work to a volunteer board. This skill does the checking first.
 
-Grant histories are useful for discovery, but they do not prove current
-eligibility. A database can miss renewals, retain closed programs, or surface a
-funder whose geography excludes Austin. This skill therefore requires:
+## What it does
 
-1. A current visit to every recommended funder's official website.
-2. A source URL for every deadline, dollar figure, and named contact.
-3. A `verified-as-of` date on every dossier.
-4. Fewer results—not weaker verification—when time is limited.
+```
+open-grant-data MCP          funder websites              output
+(756k funders, 7.5M-edge  →  (headless browser or     →   tiered dossier:
+ who-funds-whom graph)        web fetch, per funder)       verified relationship,
+        leads                     verification             move, ask $, timing,
+     [UNVERIFIED]              per-fact source URLs        contact + source
+                                                           + eligibility GATE
+                                                           + action sequence
+```
+
+1. **Gate first** — nonprofit/fiscal-sponsor status and a named outreach owner, before any funder is recommended. Unresolved gate = stated blocker, not a skipped step.
+2. **Prospect** via the [open-grant-data MCP server](https://huggingface.co/spaces/qwntl-labs/open-grant-data-mcp) (public domain, no API key). All results labeled `UNVERIFIED`; service caveats relayed verbatim.
+3. **Verify every recommended funder on its own website** — eligibility (geography!), process, live deadlines, grant-size evidence, named contacts. JS-heavy foundation sites via a [Camoufox](https://github.com/daijro/camoufox) headless browser; static pages via ordinary web fetch.
+4. **Deliver the dossier** — tiered table (active/past funder → warm network → new prospect), struck-through ineligible rows with reasons, numbered actions each with an actor and a time bound, `verified-as-of` date, page-level source for every dollar figure, deadline, and person's name.
+
+Under time pressure the skill shrinks the funder list, never the verification: three verified rows beat eight unverified names.
+
+## Example output (abridged, from a real run)
+
+| Tier | Funder | Verified relationship | The move | Ask | Timing |
+|---|---|---|---|---|---|
+| 1 | Meadows Foundation | ACTIVE: $75k (2023) → **$100k (2025)**, confirmed in mfi.org's own grants DB | Renewal via program officer; new portal account; climate-resiliency + low-income framing | $100–150k | Submit ~4-5 mo before a board month |
+| 1 | Hershey Foundation | PAST GRANTEE ($7.5k Latitude, 2024) | Main LOI cycle closed — rolling Latitude Fund is the open door | $2.5–7.5k now | This week |
+| — | ~~Communities Fdn of Texas~~ | **INELIGIBLE** — 20-county North Texas rule excludes Travis County (their eligibility page) | DAF-holder cultivation only | n/a | n/a |
 
 ## Install
 
-This repository contains a `SKILL.md` compatible with Claude Code's skill
-format. Review the file before installing it; the declared tools include file,
-shell, and web access.
-
-Install it as a personal Claude Code skill:
-
 ```bash
-git clone https://github.com/9prodhi/solar-austin.git \
-  ~/.claude/skills/solar-austin-grant-search
+# personal (all projects)
+git clone https://github.com/9prodhi/solar-austin.git ~/.claude/skills/solar-austin-grant-search
+
+# or project-scoped
+git clone https://github.com/9prodhi/solar-austin.git .claude/skills/solar-austin-grant-search
 ```
 
-Or install it only for the current project:
+Review `SKILL.md` before installing — declared tools include file, shell, and web access. Claude Code auto-selects the skill from its description, or invoke it directly: `/solar-austin-grant-search`.
 
-```bash
-git clone https://github.com/9prodhi/solar-austin.git \
-  .claude/skills/solar-austin-grant-search
-```
-
-Claude Code can select the skill automatically from its description. You can
-also invoke it directly:
-
-```text
-/solar-austin-grant-search
-```
-
-## Configure the grant-data source
-
-The grant graph is public and does not require an API key. If your agent
-supports remote MCP servers, add this to the project's `.mcp.json`:
+**Optional: register the grant graph as a project MCP server** (`.mcp.json`):
 
 ```json
 {
@@ -82,102 +67,32 @@ supports remote MCP servers, add this to the project's `.mcp.json`:
 }
 ```
 
-The skill uses the graph for prospecting and funder relationships. It relays
-any caveat returned by the service verbatim and verifies all recommendations
-independently.
+Without it, the skill can still drive the endpoint over raw JSON-RPC (documented in `SKILL.md`).
 
 ## Example requests
 
 ```text
 Who funds Austin nonprofits working on community solar and energy democracy?
+Create a verified funder dossier for Solar Austin. We have a fiscal sponsor, and Maya owns outreach.
+Check whether the deadlines in our grant plan are still current.
+Prepare a renewal approach for a past funder: ask, timing, contact, next three actions.
 ```
 
-```text
-Create a verified funder dossier for Solar Austin. We have a fiscal sponsor,
-and Maya owns outreach.
-```
+## How it was built (and tested)
 
-```text
-Check whether the deadlines and application paths in our existing grant plan
-are still current.
-```
+The skill was developed with test-driven documentation: a baseline agent given the same task **without** the skill claimed "solid, evidence-based leads, not cold guesses" while opening zero funder websites, kept the ineligible funder as a top recommendation, and invented a board chair's name. The same scenario **with** the skill produced live verification of six funder sites, a struck-through ineligible row with the disqualifying source, sourced contacts, an explicit gate, and an honest "what's unchecked" list — under identical time pressure. The rationalizations observed in the baseline run are countered explicitly in `SKILL.md`'s red-flags table.
 
-```text
-Prepare a renewal approach for a past Solar Austin funder, including the ask,
-timing, contact, and next three actions.
-```
+## Portability and freshness
 
-## Output
-
-Every completed dossier follows the same structure:
-
-1. **Research dates** — the live verification date and grant-graph snapshot
-   date.
-2. **Gate** — confirmation of nonprofit or fiscal-sponsor status and a named
-   outreach owner.
-3. **Tiered funder table** — `Funder | Verified relationship | The move |
-   Ask $ | Timing | Contact (+ source)`.
-4. **Action sequence** — numbered next steps, each assigned to an actor and a
-   time bound.
-5. **Sources** — page-level URLs for material facts.
-
-Ineligible funders remain visible but are struck through with the specific
-reason. A funder that is merely a poor fit is labeled deprioritized instead;
-the two categories are not interchangeable.
-
-## Local browser and evidence-base paths
-
-`SKILL.md` currently includes two workspace-specific optimizations:
-
-- A Camoufox CLI at
-  `/workspace/camoufox-rs/target/release/camoufox` for JavaScript-heavy funder
-  websites.
-- An optional, previously verified evidence base at
-  `/workspace/solar_aus/docs/funder-dossiers-full.md`, with a condensed example
-  at `/workspace/solar_aus/docs/funder-dossier-solar-austin.md`.
-
-Update those paths for your environment. If the evidence base is absent or
-older than roughly 60 days, the agent should perform full official-site
-verification. Static pages can be checked with ordinary web-fetch tools.
-
-## Scope
-
-Use this skill for:
-
-- institutional funder prospecting;
-- grant-deadline and eligibility checks;
-- chapter or fiscal-sponsor funding;
-- funder-specific application framing; and
-- renewal planning for Austin and Texas clean-energy nonprofits.
-
-It is not designed for individual-donor campaigns, general fundraising
-strategy, or unmodified use outside Texas. The verification workflow is
-portable, but the included funder knowledge is region-specific and
-time-sensitive.
-
-## Data freshness
-
-Version 1.0 of the skill was verified on **July 25, 2026** and references a
-**June 2026** grant-graph snapshot. Treat the funder framing in `SKILL.md` as a
-starting point, not evergreen truth. Re-check it before outreach or submission,
-especially when it is more than about 60 days old.
+- The **verification workflow is portable** to any region or sector. The **funder knowledge is not**: the framing table in `SKILL.md` covers five specific Texas funders, verified **2026-07-25** against a **June 2026** graph snapshot. Re-verify any row older than ~60 days before outreach.
+- Two workspace-specific paths in `SKILL.md` (the local Camoufox CLI and a page-cited evidence base) should be updated or removed for your environment; absent an evidence base, the skill performs full official-site verification.
 
 ## Contributing
 
-Changes should preserve the skill's non-negotiable safeguards:
+Preserve the non-negotiables: official-site verification for every recommendation; page-level sourcing for people, money, and dates; the eligibility/ownership gate; leads honestly separated from verified facts; a visible `verified-as-of` date (update it whenever time-sensitive guidance changes).
 
-- official-site verification for every recommendation;
-- page-level sourcing for people, money, and dates;
-- an explicit eligibility and ownership gate;
-- honest separation of leads from verified recommendations; and
-- a visible verification date.
+## Credits & disclaimer
 
-When updating time-sensitive funder guidance, also update the
-`verified-as-of` value in `SKILL.md`.
+Built at the Solar Austin **Energy Hackathon** (Austin, July 2026). Grant data: [open-grant-data](https://github.com/qwntl-oss/open-grant-data) (CC0). Browser: [Camoufox](https://github.com/daijro/camoufox).
 
-## Disclaimer
-
-This project supports grant research and application preparation. It does not
-guarantee eligibility, funding, or acceptance, and it is not legal, tax, or
-financial advice. Confirm final requirements directly with each funder before
-submitting.
+This project supports grant research and application preparation. It does not guarantee eligibility, funding, or acceptance, and is not legal, tax, or financial advice. Confirm final requirements directly with each funder before submitting.
